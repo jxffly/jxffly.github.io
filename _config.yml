@@ -34,5 +34,6 @@ filter: 'tag'
 markdown: kramdown
 sass:
   style: compressed
-gems:
-  - jekyll-sitemap
+plugins:
+  - jekyll-feed
+
