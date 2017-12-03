@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="MavenImportPreferences">
-    <option name="generalSettings">
-      <MavenGeneralSettings>
-        <option name="mavenHome" value="/usr/local/maven" />
-        <option name="userSettingsFile" value="/usr/local/maven/conf/settings.xml" />
-      </MavenGeneralSettings>
-    </option>
+  <component name="ASMPluginConfiguration">
+    <asm skipDebug="false" skipFrames="false" skipCode="false" expandFrames="false" />
+    <groovy codeStyle="LEGACY" />
   </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_1_6" />
   <component name="masterDetails">

@@ -1,12 +1,11 @@
 # Site settings
-title: Your awesome title
-email: your-email@domain.com
+title:  展翅高飞的个人博客
+email:  jxfflying@163.com
+github: jxffly
 description: > # this means to ignore newlines until "baseurl:"
-  Write an awesome description for your new site here. You can edit this
-  line in _config.yml. It will appear in your document head meta (for
-  Google search results) and in your feed.xml site description.
+  这个是我的个人博客，写的不好的地方请见谅
 baseurl: "" # the subpath of your site, e.g. /blog/
-url: "http://yourdomain.com" # the base hostname & protocol for your site
+url: "https://github.com/jxffly" # the base hostname & protocol for your site
 
 
 # Sidebar filter
@@ -17,7 +16,6 @@ filter: 'tag'
 # Social account
 # twitter:  username
 # weibo:    ID
-# github:   username
 # codepen:  username
 # dribbble: username
 
