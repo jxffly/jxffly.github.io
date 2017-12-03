@@ -167,6 +167,170 @@ sizeCtl默认为0，如果ConcurrentHashMap实例化时有传参数，sizeCtl会
 如果CAS成功，说明Node节点已经插入，随后addCount(1L, binCount)方法会检查当前容量是否需要进行扩容。
 如果CAS失败，说明有其它线程提前插入了节点，自旋重新尝试在这个位置插入节点。
 如果f的hash值为-1，说明当前f是ForwardingNode节点，意味有其它线程正在扩容，则一起进行扩容操作。
+
+```java
+/** 
+    * 一个过渡的table表  只有在扩容的时候才会使用 
+    */  
+   private transient volatile Node<K,V>[] nextTable;  
+  
+/** 
+    * Moves and/or copies the nodes in each bin to new table. See 
+    * above for explanation. 
+    */  
+   private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {  
+       int n = tab.length, stride;  
+       if ((stride = (NCPU > 1) ? (n >>> 3) / NCPU : n) < MIN_TRANSFER_STRIDE)  
+           stride = MIN_TRANSFER_STRIDE; // subdivide range  
+       if (nextTab == null) {            // initiating  
+           try {  
+               @SuppressWarnings("unchecked")  
+               Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n << 1];//构造一个nextTable对象 它的容量是原来的两倍  
+               nextTab = nt;  
+           } catch (Throwable ex) {      // try to cope with OOME  
+               sizeCtl = Integer.MAX_VALUE;  
+               return;  
+           }  
+           nextTable = nextTab;  
+           transferIndex = n;  
+       }  
+       int nextn = nextTab.length;  
+       ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);//构造一个连节点指针 用于标志位  
+       boolean advance = true;//并发扩容的关键属性 如果等于true 说明这个节点已经处理过  
+       boolean finishing = false; // to ensure sweep before committing nextTab  
+       for (int i = 0, bound = 0;;) {  
+           Node<K,V> f; int fh;  
+           //这个while循环体的作用就是在控制i--  通过i--可以依次遍历原hash表中的节点  
+           while (advance) {  
+               int nextIndex, nextBound;  
+               if (--i >= bound || finishing)  
+                   advance = false;  
+               else if ((nextIndex = transferIndex) <= 0) {  
+                   i = -1;  
+                   advance = false;  
+               }  
+               else if (U.compareAndSwapInt  
+                        (this, TRANSFERINDEX, nextIndex,  
+                         nextBound = (nextIndex > stride ?  
+                                      nextIndex - stride : 0))) {  
+                   bound = nextBound;  
+                   i = nextIndex - 1;  
+                   advance = false;  
+               }  
+           }  
+           if (i < 0 || i >= n || i + n >= nextn) {  
+               int sc;  
+               if (finishing) {  
+                //如果所有的节点都已经完成复制工作  就把nextTable赋值给table 清空临时对象nextTable  
+                   nextTable = null;  
+                   table = nextTab;  
+                   sizeCtl = (n << 1) - (n >>> 1);//扩容阈值设置为原来容量的1.5倍  依然相当于现在容量的0.75倍  
+                   return;  
+               }  
+               //利用CAS方法更新这个扩容阈值，在这里面sizectl值减一，说明新加入一个线程参与到扩容操作  
+               if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {  
+                   if ((sc - 2) != resizeStamp(n) << RESIZE_STAMP_SHIFT)  
+                       return;  
+                   finishing = advance = true;  
+                   i = n; // recheck before commit  
+               }  
+           }  
+           //如果遍历到的节点为空 则放入ForwardingNode指针  
+           else if ((f = tabAt(tab, i)) == null)  
+               advance = casTabAt(tab, i, null, fwd);  
+           //如果遍历到ForwardingNode节点  说明这个点已经被处理过了 直接跳过  这里是控制并发扩容的核心  
+           else if ((fh = f.hash) == MOVED)  
+               advance = true; // already processed  
+           else {  
+                //节点上锁  
+               synchronized (f) {  
+                   if (tabAt(tab, i) == f) {  
+                       Node<K,V> ln, hn;  
+                       //如果fh>=0 证明这是一个Node节点  
+                       if (fh >= 0) {  
+                           int runBit = fh & n;  
+                           //以下的部分在完成的工作是构造两个链表  一个是原链表  另一个是原链表的反序排列  
+                           Node<K,V> lastRun = f;  
+                           for (Node<K,V> p = f.next; p != null; p = p.next) {  
+                               int b = p.hash & n;  
+                               if (b != runBit) {  
+                                   runBit = b;  
+                                   lastRun = p;  
+                               }  
+                           }  
+                           if (runBit == 0) {  
+                               ln = lastRun;  
+                               hn = null;  
+                           }  
+                           else {  
+                               hn = lastRun;  
+                               ln = null;  
+                           }  
+                           for (Node<K,V> p = f; p != lastRun; p = p.next) {  
+                               int ph = p.hash; K pk = p.key; V pv = p.val;  
+                               if ((ph & n) == 0)  
+                                   ln = new Node<K,V>(ph, pk, pv, ln);  
+                               else  
+                                   hn = new Node<K,V>(ph, pk, pv, hn);  
+                           }  
+                           //在nextTable的i位置上插入一个链表  
+                           setTabAt(nextTab, i, ln);  
+                           //在nextTable的i+n的位置上插入另一个链表  
+                           setTabAt(nextTab, i + n, hn);  
+                           //在table的i位置上插入forwardNode节点  表示已经处理过该节点  
+                           setTabAt(tab, i, fwd);  
+                           //设置advance为true 返回到上面的while循环中 就可以执行i--操作  
+                           advance = true;  
+                       }  
+                       //对TreeBin对象进行处理  与上面的过程类似  
+                       else if (f instanceof TreeBin) {  
+                           TreeBin<K,V> t = (TreeBin<K,V>)f;  
+                           TreeNode<K,V> lo = null, loTail = null;  
+                           TreeNode<K,V> hi = null, hiTail = null;  
+                           int lc = 0, hc = 0;  
+                           //构造正序和反序两个链表  
+                           for (Node<K,V> e = t.first; e != null; e = e.next) {  
+                               int h = e.hash;  
+                               TreeNode<K,V> p = new TreeNode<K,V>  
+                                   (h, e.key, e.val, null, null);  
+                               if ((h & n) == 0) {  
+                                   if ((p.prev = loTail) == null)  
+                                       lo = p;  
+                                   else  
+                                       loTail.next = p;  
+                                   loTail = p;  
+                                   ++lc;  
+                               }  
+                               else {  
+                                   if ((p.prev = hiTail) == null)  
+                                       hi = p;  
+                                   else  
+                                       hiTail.next = p;  
+                                   hiTail = p;  
+                                   ++hc;  
+                               }  
+                           }  
+                           //如果扩容后已经不再需要tree的结构 反向转换为链表结构  
+                           ln = (lc <= UNTREEIFY_THRESHOLD) ? untreeify(lo) :  
+                               (hc != 0) ? new TreeBin<K,V>(lo) : t;  
+                           hn = (hc <= UNTREEIFY_THRESHOLD) ? untreeify(hi) :  
+                               (lc != 0) ? new TreeBin<K,V>(hi) : t;  
+                            //在nextTable的i位置上插入一个链表      
+                           setTabAt(nextTab, i, ln);  
+                           //在nextTable的i+n的位置上插入另一个链表  
+                           setTabAt(nextTab, i + n, hn);  
+                            //在table的i位置上插入forwardNode节点  表示已经处理过该节点  
+                           setTabAt(tab, i, fwd);  
+                           //设置advance为true 返回到上面的while循环中 就可以执行i--操作  
+                           advance = true;  
+                       }  
+                   }  
+               }  
+           }  
+       }  
+   }  
+```
+
 其余情况把新的Node节点按链表或红黑树的方式插入到合适的位置，这个过程采用同步内置锁实现并发，代码如下:
 
 ```java
@@ -230,4 +394,83 @@ synchronized (f) {
 
 * Doug Lea采用Unsafe.getObjectVolatile来获取，也许有人质疑，直接table[index]不可以么，为什么要这么复杂？
   在java内存模型中，我们已经知道每个线程都有一个工作内存，里面存储着table的副本，虽然table是volatile修饰的，但不能保证线程每次都拿到table中的最新元素，Unsafe.getObjectVolatile可以直接获取指定内存的数据，保证了每次拿到数据都是最新的。
-* 其余情况把新的Node节点按链表或红黑树的方式插入到合适的位置，这个过程采用同步内置锁实现并发，代码如下:
+* 其余情况把新的Node节点按链表或红黑树的方式插入到合适的位置，这个过程采用同步内置锁实现并发，代码如下
+
+```java
+public V get(Object key) {  
+        Node<K,V>[] tab; Node<K,V> e, p; int n, eh; K ek;  
+        //计算hash值  
+        int h = spread(key.hashCode());  
+        //根据hash值确定节点位置  
+        if ((tab = table) != null && (n = tab.length) > 0 &&  
+            (e = tabAt(tab, (n - 1) & h)) != null) {  
+            //如果搜索到的节点key与传入的key相同且不为null,直接返回这个节点    
+            if ((eh = e.hash) == h) {  
+                if ((ek = e.key) == key || (ek != null && key.equals(ek)))  
+                    return e.val;  
+            }  
+            //如果eh<0 说明这个节点在树上 直接寻找  
+            else if (eh < 0)  
+                return (p = e.find(h, key)) != null ? p.val : null;  
+             //否则遍历链表 找到对应的值并返回  
+            while ((e = e.next) != null) {  
+                if (e.hash == h &&  
+                    ((ek = e.key) == key || (ek != null && key.equals(ek))))  
+                    return e.val;  
+            }  
+        }  
+        return null;  
+    }  
+```
+
+#### 5.其他
+
+- ###### Size相关的方法
+
+  ConcurrentHashMap来说，这个table里到底装了多少东西其实是个不确定的数量，因为不可能在调用size()方法的时候像GC的“stop the world”一样让其他线程都停下来让你去统计，因此只能说这个数量是个估计值。对于这个估计值，ConcurrentHashMap也是大费周章才计算出来的。
+
+- ##### 8.2 mappingCount与Size方法
+
+  mappingCount与size方法的类似  从Java工程师给出的注释来看，应该使用mappingCount代替size方法 两个方法都没有直接返回basecount 而是统计一次这个值，而这个值其实也是一个大概的数值，因此可能在统计的时候有其他线程正在执行插入或删除操作。
+
+  ```java
+  public int size() {  
+          long n = sumCount();  
+          return ((n < 0L) ? 0 :  
+                  (n > (long)Integer.MAX_VALUE) ? Integer.MAX_VALUE :  
+                  (int)n);  
+      }  
+       /** 
+       * Returns the number of mappings. This method should be used 
+       * instead of {@link #size} because a ConcurrentHashMap may 
+       * contain more mappings than can be represented as an int. The 
+       * value returned is an estimate; the actual count may differ if 
+       * there are concurrent insertions or removals. 
+       * 
+       * @return the number of mappings 
+       * @since 1.8 
+       */  
+      public long mappingCount() {  
+          long n = sumCount();  
+          return (n < 0L) ? 0L : n; // ignore transient negative values  
+      }  
+        
+       final long sumCount() {  
+          CounterCell[] as = counterCells; CounterCell a;  
+          long sum = baseCount;  
+          if (as != null) {  
+              for (int i = 0; i < as.length; ++i) {  
+                  if ((a = as[i]) != null)  
+                      sum += a.value;//所有counter的值求和  
+              }  
+          }  
+          return sum;  
+      }  
+  ```
+
+  ​
+
+参考文档：
+
+- <a href="http://blog.csdn.net/u010723709/article/details/48007881" target="_blank">ConcurrentHashMap源码分析（JDK8版本)</a>
+- <a href="http://www.jasongj.com/java/concurrenthashmap/" target="_blank">Java进阶（六）从ConcurrentHashMap的演进看Java多线程核心技术</a>
