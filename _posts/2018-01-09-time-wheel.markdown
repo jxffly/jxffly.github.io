@@ -665,4 +665,4 @@ private final class Worker implements Runnable {
 5. 不断优化性能，Lock Less代替Lock；Lock Free代替Lock Less
 6. JCTool高性能队列的使用
 
-引用的文章：
+引用的文章：[netty源码解读之时间轮算法实现-HashedWheelTimer](https://zacard.net/2016/12/02/netty-hashedwheeltimer/)
