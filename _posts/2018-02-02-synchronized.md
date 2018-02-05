@@ -5,6 +5,10 @@ date: 2018-02-01 00:00:00
 tags: concurrent java 并发 多线程
 ---
 # java的并发
+引用的文章：
+[java monitor](https://www.jianshu.com/p/6fe4bc3374a2)
+
+[java synchronized优化](http://www.cnblogs.com/paddix/p/5405678.html)
 
 ## 1.多线程的含义
 
