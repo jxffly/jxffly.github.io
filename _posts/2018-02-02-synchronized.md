@@ -245,6 +245,8 @@ void xxxMethod() throws InterruptedException{
 
 ###### **3、重量级锁、轻量级锁和偏向锁之间转换**
 ![锁的膨胀和转换](/image/lock-processor.png)
+![锁的膨胀和转换2](/image/lock-processor2.jpg)
+
 
 
 **4.2.3、其他优化 **
@@ -284,7 +286,7 @@ public class StringBufferTest {
 
 　　本节内容重点介绍了：
 
-1. java的锁实现的模型，使用监视器来实现锁，重量级锁底层真正使用的是cup的 mutex lock来实现的。
+1. java的锁实现的模型，使用监视器数据结构来实现锁，重量级锁底层真正使用的是cup的 mutex lock来实现的。
 2. JDK中采用轻量级锁和偏向锁等对Synchronized的优化，但是这两种锁也不是完全没缺点的，比如竞争比较激烈的时候，不但无法提升效率，反而会降低效率，因为多了一个锁升级的过程，这个时候就需要通过-XX:-UseBiasedLocking来禁用偏向锁。下面是这几种锁的对比：
 
 | 锁    | 优点                                | 缺点                       | 适用场景               |
